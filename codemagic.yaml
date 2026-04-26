@@ -10,10 +10,11 @@ workflows:
       events:
         - push
         - pull_request
-      branch:
-        include:
-          - main
-          - develop
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: develop
+          include: true
       cancel_previous_builds: true
     scripts:
       - name: Install pnpm and Node dependencies
