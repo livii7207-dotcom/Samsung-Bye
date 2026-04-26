@@ -6,8 +6,6 @@ workflows:
     environment:
       node: 22.13.0
       java: 17
-      groups:
-        - android_credentials
     triggering:
       events:
         - push
@@ -32,51 +30,6 @@ workflows:
           ./gradlew assembleDebug
     artifacts:
       - android/app/build/outputs/apk/debug/*.apk
-    publishing:
-      email:
-        recipients:
-          - $DEVELOPER_EMAIL
-        notify:
-          success: true
-          failure: true
-
-  android-release-build:
-    name: Android Release APK Build
-    instance_type: linux_x2
-    max_build_duration: 60
-    environment:
-      node: 22.13.0
-      java: 17
-      groups:
-        - android_credentials
-    triggering:
-      events:
-        - tag
-      tag:
-        pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
-      cancel_previous_builds: true
-    scripts:
-      - name: Install pnpm and Node dependencies
-        script: |
-          corepack enable
-          corepack prepare pnpm@9.12.0 --activate
-          pnpm install
-      - name: Generate Android native project
-        script: |
-          npx expo prebuild --platform android --no-install
-      - name: Decode keystore
-        script: |
-          echo $CM_KEYSTORE | base64 --decode > android/app/keystore.jks
-      - name: Build Android Release APK
-        script: |
-          cd android
-          ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=keystore.jks \
-            -Pandroid.injected.signing.store.password=$CM_KEYSTORE_PASSWORD \
-            -Pandroid.injected.signing.key.alias=$CM_KEY_ALIAS \
-            -Pandroid.injected.signing.key.password=$CM_KEY_PASSWORD
-    artifacts:
-      - android/app/build/outputs/apk/release/*.apk
     publishing:
       email:
         recipients:
