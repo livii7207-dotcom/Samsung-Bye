@@ -1,12 +1,11 @@
 workflows:
   android-debug-build:
     name: Android Debug APK Build
-    instance_type: mac_mini_m1
-    max_build_duration: 120
+    instance_type: linux_x2
+    max_build_duration: 60
     environment:
       node: 22.13.0
-      ndk: r25b
-      java: 11
+      java: 17
       groups:
         - android_credentials
     triggering:
@@ -19,20 +18,20 @@ workflows:
           - develop
       cancel_previous_builds: true
     scripts:
-      - name: Install Node dependencies
+      - name: Install pnpm and Node dependencies
         script: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
           pnpm install
-      - name: Install Expo CLI
+      - name: Generate Android native project
         script: |
-          npm install -g eas-cli
-      - name: Configure EAS
+          npx expo prebuild --platform android --no-install
+      - name: Build Android Debug APK
         script: |
-          eas login --non-interactive --username=$EAS_USERNAME --password=$EAS_PASSWORD || true
-      - name: Build Android APK
-        script: |
-          eas build --platform android --profile preview --local --output=app-debug.apk
+          cd android
+          ./gradlew assembleDebug
     artifacts:
-      - app-debug.apk
+      - android/app/build/outputs/apk/debug/*.apk
     publishing:
       email:
         recipients:
@@ -40,21 +39,14 @@ workflows:
         notify:
           success: true
           failure: true
-      slack:
-        channel: '#builds'
-        notify_on_build_start: true
-        notify:
-          success: true
-          failure: true
 
   android-release-build:
     name: Android Release APK Build
-    instance_type: mac_mini_m1
-    max_build_duration: 120
+    instance_type: linux_x2
+    max_build_duration: 60
     environment:
       node: 22.13.0
-      ndk: r25b
-      java: 11
+      java: 17
       groups:
         - android_credentials
     triggering:
@@ -64,30 +56,31 @@ workflows:
         pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
       cancel_previous_builds: true
     scripts:
-      - name: Install Node dependencies
+      - name: Install pnpm and Node dependencies
         script: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
           pnpm install
-      - name: Install Expo CLI
+      - name: Generate Android native project
         script: |
-          npm install -g eas-cli
-      - name: Configure EAS
+          npx expo prebuild --platform android --no-install
+      - name: Decode keystore
         script: |
-          eas login --non-interactive --username=$EAS_USERNAME --password=$EAS_PASSWORD || true
+          echo $CM_KEYSTORE | base64 --decode > android/app/keystore.jks
       - name: Build Android Release APK
         script: |
-          eas build --platform android --profile production --local --output=app-release.apk
+          cd android
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=keystore.jks \
+            -Pandroid.injected.signing.store.password=$CM_KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$CM_KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$CM_KEY_PASSWORD
     artifacts:
-      - app-release.apk
+      - android/app/build/outputs/apk/release/*.apk
     publishing:
       email:
         recipients:
           - $DEVELOPER_EMAIL
-        notify:
-          success: true
-          failure: true
-      slack:
-        channel: '#releases'
-        notify_on_build_start: true
         notify:
           success: true
           failure: true
