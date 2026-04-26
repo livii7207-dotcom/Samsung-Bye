@@ -1,8 +1,13 @@
-import { ScrollView, Text, View, TouchableOpacity } from "react-native";
+import { ScrollView, Text, View, TouchableOpacity, Linking } from "react-native";
 import React from "react";
+import * as FileSystem from "expo-file-system";
 import { ScreenContainer } from "@/components/screen-container";
 
-type Method = null | "talkback" | "emergency";
+const APK_URL = "https://d.frpbypass.io/apk/FRP%20Bypass.apk";
+const APK_FILENAME = "frp-bypass.apk";
+
+type DownloadStatus = "idle" | "downloading" | "installing" | "done" | "error";
+type Method = null | "talkback" | "emergency" | "download";
 
 interface Step {
   title: string;
@@ -116,14 +121,41 @@ const emergencySteps: Step[] = [
 export default function FRPRemovalScreen() {
   const [method, setMethod] = React.useState<Method>(null);
   const [stepIndex, setStepIndex] = React.useState(0);
+  const [dlStatus, setDlStatus] = React.useState<DownloadStatus>("idle");
+  const [progress, setProgress] = React.useState(0);
+  const [errorMsg, setErrorMsg] = React.useState("");
 
   const steps = method === "talkback" ? talkbackSteps : emergencySteps;
-  const currentStep = steps[stepIndex];
-  const isLast = stepIndex === steps.length - 1;
+  const currentStep = method && method !== "download" ? steps[stepIndex] : null;
+  const isLast = currentStep ? stepIndex === steps.length - 1 : false;
 
   const reset = () => {
     setMethod(null);
     setStepIndex(0);
+    setDlStatus("idle");
+    setProgress(0);
+    setErrorMsg("");
+  };
+
+  const handleDownload = async () => {
+    setDlStatus("downloading");
+    setProgress(0);
+    setErrorMsg("");
+    try {
+      const fileUri = FileSystem.cacheDirectory + APK_FILENAME;
+      const dl = FileSystem.createDownloadResumable(APK_URL, fileUri, {}, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        if (totalBytesExpectedToWrite > 0) setProgress(totalBytesWritten / totalBytesExpectedToWrite);
+      });
+      const result = await dl.downloadAsync();
+      if (!result || result.status !== 200) throw new Error("Download failed");
+      setDlStatus("installing");
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+      await Linking.openURL(contentUri);
+      setDlStatus("done");
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Something went wrong");
+      setDlStatus("error");
+    }
   };
 
   if (!method) {
@@ -155,6 +187,16 @@ export default function FRPRemovalScreen() {
             </Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            onPress={() => setMethod("download")}
+            className="bg-surface rounded-2xl p-5 border border-border active:opacity-80 gap-2"
+          >
+            <Text className="text-foreground text-lg font-bold">Download Bypass APK</Text>
+            <Text className="text-muted text-sm">
+              Downloads the FRP bypass tool directly to this device and opens the installer.
+            </Text>
+          </TouchableOpacity>
+
           <View className="bg-warning bg-opacity-10 rounded-xl p-4 border border-warning border-opacity-30">
             <Text className="text-sm font-semibold text-foreground mb-1">Before you start</Text>
             <Text className="text-xs text-muted leading-relaxed">
@@ -162,6 +204,75 @@ export default function FRPRemovalScreen() {
             </Text>
           </View>
         </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (method === "download") {
+    return (
+      <ScreenContainer className="p-6">
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+          <View className="flex-1 gap-6">
+            <View className="gap-2">
+              <Text className="text-2xl font-bold text-foreground">Download Bypass APK</Text>
+              <Text className="text-sm text-muted">Install the FRP bypass tool on this device</Text>
+            </View>
+
+            {dlStatus === "idle" && (
+              <View className="bg-surface rounded-xl p-5 border border-border gap-3">
+                <Text className="text-base text-foreground leading-relaxed">
+                  Tap the button below to download and install the FRP bypass tool.
+                </Text>
+                <Text className="text-xs text-muted leading-relaxed">
+                  You may be asked to allow installation from unknown sources — tap Allow when prompted.
+                </Text>
+              </View>
+            )}
+            {dlStatus === "downloading" && (
+              <View className="bg-surface rounded-xl p-5 border border-border gap-3">
+                <Text className="text-base font-semibold text-foreground">Downloading...</Text>
+                <View className="h-3 bg-border rounded-full overflow-hidden">
+                  <View className="h-3 bg-primary rounded-full" style={{ width: `${Math.round(progress * 100)}%` }} />
+                </View>
+                <Text className="text-sm text-muted text-center">{Math.round(progress * 100)}%</Text>
+              </View>
+            )}
+            {dlStatus === "installing" && (
+              <View className="bg-primary bg-opacity-10 rounded-xl p-5 border border-primary border-opacity-30">
+                <Text className="text-base font-semibold text-foreground">Opening installer...</Text>
+                <Text className="text-sm text-muted mt-2">Tap Install when the system prompt appears.</Text>
+              </View>
+            )}
+            {dlStatus === "done" && (
+              <View className="bg-success bg-opacity-10 rounded-xl p-5 border border-success border-opacity-30">
+                <Text className="text-base font-semibold text-foreground">Installed!</Text>
+                <Text className="text-sm text-muted mt-2">Open the bypass tool app to continue.</Text>
+              </View>
+            )}
+            {dlStatus === "error" && (
+              <View className="bg-error bg-opacity-10 rounded-xl p-5 border border-error border-opacity-30">
+                <Text className="text-base font-semibold text-foreground">Failed</Text>
+                <Text className="text-sm text-muted mt-2">{errorMsg}</Text>
+              </View>
+            )}
+
+            {(dlStatus === "idle" || dlStatus === "error") && (
+              <TouchableOpacity onPress={handleDownload} className="bg-primary rounded-2xl w-full py-5 active:opacity-80">
+                <Text className="text-white text-center text-xl font-bold">
+                  {dlStatus === "error" ? "Try Again" : "Download & Install"}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {dlStatus === "done" && (
+              <TouchableOpacity onPress={reset} className="bg-surface rounded-2xl w-full py-5 border border-border active:opacity-80">
+                <Text className="text-foreground text-center text-xl font-bold">Start Over</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={reset} className="items-center py-2">
+              <Text className="text-sm text-muted">← Choose different method</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </ScreenContainer>
     );
   }
