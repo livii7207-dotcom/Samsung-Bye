@@ -1,0 +1,93 @@
+workflows:
+  android-debug-build:
+    name: Android Debug APK Build
+    instance_type: mac_mini_m1
+    max_build_duration: 120
+    environment:
+      node: 22.13.0
+      ndk: r25b
+      java: 11
+      groups:
+        - android_credentials
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch:
+        include:
+          - main
+          - develop
+      cancel_previous_builds: true
+    scripts:
+      - name: Install Node dependencies
+        script: |
+          pnpm install
+      - name: Install Expo CLI
+        script: |
+          npm install -g eas-cli
+      - name: Configure EAS
+        script: |
+          eas login --non-interactive --username=$EAS_USERNAME --password=$EAS_PASSWORD || true
+      - name: Build Android APK
+        script: |
+          eas build --platform android --profile preview --local --output=app-debug.apk
+    artifacts:
+      - app-debug.apk
+    publishing:
+      email:
+        recipients:
+          - $DEVELOPER_EMAIL
+        notify:
+          success: true
+          failure: true
+      slack:
+        channel: '#builds'
+        notify_on_build_start: true
+        notify:
+          success: true
+          failure: true
+
+  android-release-build:
+    name: Android Release APK Build
+    instance_type: mac_mini_m1
+    max_build_duration: 120
+    environment:
+      node: 22.13.0
+      ndk: r25b
+      java: 11
+      groups:
+        - android_credentials
+    triggering:
+      events:
+        - tag
+      tag:
+        pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+      cancel_previous_builds: true
+    scripts:
+      - name: Install Node dependencies
+        script: |
+          pnpm install
+      - name: Install Expo CLI
+        script: |
+          npm install -g eas-cli
+      - name: Configure EAS
+        script: |
+          eas login --non-interactive --username=$EAS_USERNAME --password=$EAS_PASSWORD || true
+      - name: Build Android Release APK
+        script: |
+          eas build --platform android --profile production --local --output=app-release.apk
+    artifacts:
+      - app-release.apk
+    publishing:
+      email:
+        recipients:
+          - $DEVELOPER_EMAIL
+        notify:
+          success: true
+          failure: true
+      slack:
+        channel: '#releases'
+        notify_on_build_start: true
+        notify:
+          success: true
+          failure: true
